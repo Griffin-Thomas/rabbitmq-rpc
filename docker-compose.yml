@@ -1,0 +1,26 @@
+version: '3'
+
+services:
+  
+  rabbitmq:
+    image: 'rabbitmq:3.6-management-alpine'
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=fpfrocks
+    ports:
+      - '5672:5672'
+      # - '15672:15672' # no need to expose this publicly
+
+  worker:
+    build: worker
+    volumes:
+      - ./worker:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  server:
+    build: server
+    volumes:
+      - ./server:/app
+    ports:
+      - 5000:5000

@@ -1,26 +1,36 @@
-version: '3'
+version: '1'
 
 services:
   
   rabbitmq:
-    image: 'rabbitmq:3.6-management-alpine'
+    image: 'rabbitmq:management'
     environment:
       - RABBITMQ_DEFAULT_USER=admin
       - RABBITMQ_DEFAULT_PASS=fpfrocks
+    expose: # so that it's just the containers, not for the host
+      - 5672
     ports:
-      - '5672:5672'
-      # - '15672:15672' # no need to expose this publicly
+      # - '5672:5672'
+      - 15672:15672 # no need to expose this publicly but just doing it for now
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "localhost", "5672" ]
+      interval: 3s
+      timeout: 10s
+      retries: 3
 
-  worker:
-    build: worker
-    volumes:
-      - ./worker:/app
-    environment:
-      - PYTHONUNBUFFERED=1
-
-  server:
+  server: # flask
     build: server
+    restart: on-failure
     volumes:
       - ./server:/app
     ports:
       - 5000:5000
+    
+  worker: # pika
+    build: worker
+    depends_on:
+      - rabbitmq
+    volumes:
+      - ./worker:/app
+    environment:
+      - PYTHONUNBUFFERED=1

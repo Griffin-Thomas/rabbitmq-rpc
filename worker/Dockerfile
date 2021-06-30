@@ -3,7 +3,7 @@ FROM ubuntu:18.04
 RUN apt-get update -y && \
     apt-get install -y python3-pip python3-dev
 
-RUN pip3 install pika
+RUN pip3 install pika==1.2.0
 
 WORKDIR /app
 

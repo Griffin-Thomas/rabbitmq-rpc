@@ -1,15 +1,19 @@
 from flask import Flask
-import logging
 import pika
-import uuid
+# import uuid # should we use this or just a timestamp?
+from datetime import datetime # for timestamp option: 15-Jun-2021 (22:18:36.435350)
+# from pytz import timezone # to get US/Eastern timezone
 import threading
 import json
 
+import logging
+logging.basicConfig(level=logging.INFO) # info and debug
+
+# eastern = timezone('US/Eastern')
+
 app = Flask(__name__)
 
-# logging.basicConfig(level=logging.DEBUG)
 queue = {}
-
 
 class FibonacciRpcClient(object):
 
@@ -39,7 +43,15 @@ class FibonacciRpcClient(object):
 
     def call(self, n):
         self.response = None
-        self.corr_id = str(uuid.uuid4())
+
+        # UUID method
+        # self.corr_id = str(uuid.uuid4())
+
+        # Datetime method
+        dateTimeObj = datetime.now() # tz = None
+        timestampStr = dateTimeObj.strftime("%d-%b-%Y (%H:%M:%S.%f)")
+        self.corr_id = timestampStr
+
         queue[self.corr_id] = {}
         self.channel.basic_publish(
             exchange='',
@@ -52,29 +64,32 @@ class FibonacciRpcClient(object):
         while self.response is None:
             self.connection.process_data_events()
         queue[self.corr_id] = json.loads(self.response.decode()) # must decode to convert to UTF-8
-        # print(self.response)
         return self.response
 
 
-@app.route("/calculate/<payload>")
+@app.route("/calculate/<payload>", methods=['GET'])
 def calculate(payload):
     n = int(payload)
     fibonacci_rpc = FibonacciRpcClient()
     threading.Thread(target=fibonacci_rpc.call, args=(n,)).start()
-    return "sent " + payload
+    return "Sent " + payload
 
 
-# @app.route("/results/<id>") # how to get corr_id in frontend for a reference later??
-@app.route("/results")
-def send_results():
-    key = list(queue.keys())[0] # get the first key (dicts are unordered but whatever)
-    # key = the corr_id we want
+@app.route("/designs", methods=['GET'])
+def send_designs():
+    # key = list(queue.keys())[0] # get the first key (dicts are unordered but whatever)
 
     # app.logger.info(queue)
     # app.logger.info("hey")
     # app.logger.info(queue[key])
 
-    return json.dumps(queue[key])
+    return json.dumps(queue)
+
+
+@app.route("/designs/<id>", methods=['GET']) # how to get corr_id in frontend for a reference later?
+def send_design(id):
+    app.logger.info(id) # the corr_id
+    return json.dumps(queue[id])
 
 
 if __name__ == '__main__':

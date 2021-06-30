@@ -28,8 +28,6 @@ services:
     
   worker: # pika
     build: worker
-    depends_on:
-      - rabbitmq
     volumes:
       - ./worker:/app
     environment:

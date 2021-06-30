@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, Response
 import pika
 # import uuid # should we use this or just a timestamp?
 from datetime import datetime # for timestamp option: 15-Jun-2021 (22:18:36.435350)
@@ -77,19 +77,17 @@ def calculate(payload):
 
 @app.route("/designs", methods=['GET'])
 def send_designs():
-    # key = list(queue.keys())[0] # get the first key (dicts are unordered but whatever)
-
-    # app.logger.info(queue)
-    # app.logger.info("hey")
-    # app.logger.info(queue[key])
-
     return json.dumps(queue)
 
 
 @app.route("/designs/<id>", methods=['GET']) # how to get corr_id in frontend for a reference later?
 def send_design(id):
     app.logger.info(id) # the corr_id
-    return json.dumps(queue[id])
+
+    if id in queue:
+        return json.dumps(queue[id])
+    
+    return Response(status = 200) # no data found, but request was valid
 
 
 if __name__ == '__main__':

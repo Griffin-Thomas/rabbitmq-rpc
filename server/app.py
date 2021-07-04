@@ -1,21 +1,21 @@
 from flask import Flask, Response
 import pika
-# import uuid # should we use this or just a timestamp?
+# import uuid # should we use this or just a timestamp? I think timestamp
 from datetime import datetime # for timestamp option: 15-Jun-2021 (22:18:36.435350)
-# from pytz import timezone # to get US/Eastern timezone
+# from pytz import timezone # to get a specific timezone perhaps
 import threading
 import json
 
 import logging
-logging.basicConfig(level=logging.INFO) # info and debug
+logging.basicConfig(level=logging.INFO) # info and debug with this level
 
 # eastern = timezone('US/Eastern')
 
 app = Flask(__name__)
 
-queue = {}
+queue = {} # RabbitMQ queue that stores the messages
 
-class FibonacciRpcClient(object):
+class FpfRpcClient(object):
 
     def __init__(self):
         self.credentials = pika.PlainCredentials('admin', 'fpfrocks')
@@ -41,16 +41,9 @@ class FibonacciRpcClient(object):
         if self.corr_id == props.correlation_id:
             self.response = body
 
-    def call(self, n):
+    def call(self, payload, id):
         self.response = None
-
-        # UUID method
-        # self.corr_id = str(uuid.uuid4())
-
-        # Datetime method
-        dateTimeObj = datetime.now() # tz = None
-        timestampStr = dateTimeObj.strftime("%d-%b-%Y (%H:%M:%S.%f)")
-        self.corr_id = timestampStr
+        self.corr_id = id
 
         queue[self.corr_id] = {}
         self.channel.basic_publish(
@@ -60,7 +53,7 @@ class FibonacciRpcClient(object):
                 reply_to=self.callback_queue,
                 correlation_id=self.corr_id,
             ),
-            body=str(n))
+            body=str(payload))
         while self.response is None:
             self.connection.process_data_events()
         queue[self.corr_id] = json.loads(self.response.decode()) # must decode to convert to UTF-8
@@ -68,26 +61,57 @@ class FibonacciRpcClient(object):
 
 
 @app.route("/calculate/<payload>", methods=['GET'])
-def calculate(payload):
-    n = int(payload)
-    fibonacci_rpc = FibonacciRpcClient()
-    threading.Thread(target=fibonacci_rpc.call, args=(n,)).start()
-    return "Sent " + payload
+@app.route("/calculate/<payload>/<id>", methods=['GET'])
+def calculate(payload, id=None):
+    '''
+    calculate - To call the RabbitMQ RPC
+
+    @param payload <json> - A JSON containing the FPF payload required to generate a path via our Main REST API
+    @param @optional id <str> - A timestamp to serve as the correlation ID for our message
+        e.g. To set a Correlation ID on each produced message (on consumer you receive this 
+        Correlation ID and you can match it back), then check if that's the one you are expecting
+    
+    @return <str> - To confirm the correlation ID (time) that the payload was sent at, OR 400 response code
+                    if the payload is bad
+    '''
+    try:
+        payload = int(payload) # TODO temporary int of course
+    except ValueError:
+        return Response(status=400) # invalid payload request
+
+    # UUID method for messages
+    # self.corr_id = str(uuid.uuid4())
+
+    # Datetime method for messages
+    # TODO: bring to the caller (web app) instead of this function
+    if id is None:
+        dateTimeObj = datetime.now() # tz = None
+        id = dateTimeObj.strftime("%d-%b-%Y (%H:%M:%S.%f)") # e.g. 15-Jun-2021 (22:18:36.435350)
+
+    fibonacci_rpc = FpfRpcClient()
+    threading.Thread(target=fibonacci_rpc.call, args=(payload,id,)).start()
+    return "Sent on " + id
 
 
 @app.route("/designs", methods=['GET'])
-def send_designs():
-    return json.dumps(queue)
+@app.route("/designs/<id>", methods=['GET'])
+def results(id=None):
+    '''
+    results - Send back the design associated with a correlation ID, or all designs
 
+    @param @optional id <str> - The correlation ID (timestamp)
 
-@app.route("/designs/<id>", methods=['GET']) # how to get corr_id in frontend for a reference later?
-def send_design(id):
-    app.logger.info(id) # the corr_id
+    @return <json> - The design(s) made via the RPC, OR just a 200 response code if no design exists
+    '''
+    # app.logger.info(id) # the correlation ID
 
-    if id in queue:
+    if id is None: # send back all designs made via the RPC
+        return json.dumps(queue)
+
+    if id in queue: # send back specific design made via the RPC
         return json.dumps(queue[id])
     
-    return Response(status = 200) # no data found, but request was valid
+    return Response(status=200) # no data found for given correlation ID, but request was valid
 
 
 if __name__ == '__main__':

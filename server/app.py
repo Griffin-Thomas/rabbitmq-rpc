@@ -13,6 +13,7 @@ logging.basicConfig(level=logging.INFO) # info and debug with this level
 
 app = Flask(__name__)
 
+# TODO: get queue from PostgreSQL either here or probably inside FpfRpcClient class
 queue = {} # RabbitMQ queue that stores the messages
 
 class FpfRpcClient(object):
@@ -28,6 +29,8 @@ class FpfRpcClient(object):
         )
 
         self.channel = self.connection.channel()
+
+        # TODO: self.queue = ... from PostgreSQL, instead of outside the class
 
         result = self.channel.queue_declare('', exclusive=True)
         self.callback_queue = result.method.queue
@@ -46,6 +49,8 @@ class FpfRpcClient(object):
         self.corr_id = id
 
         queue[self.corr_id] = {}
+        # TODO: also create entry in PostgreSQL
+
         self.channel.basic_publish(
             exchange='',
             routing_key='rpc_queue',
@@ -56,7 +61,10 @@ class FpfRpcClient(object):
             body=str(payload))
         while self.response is None:
             self.connection.process_data_events()
+        
         queue[self.corr_id] = json.loads(self.response.decode()) # must decode to convert to UTF-8
+        # TODO: also update entry in PostgreSQL based on correlation ID
+
         return self.response
 
 
@@ -75,7 +83,7 @@ def calculate(payload, id=None):
                     if the payload is bad
     '''
     try:
-        payload = int(payload) # TODO temporary int of course
+        payload = int(payload) # TODO: temporary int of course
     except ValueError:
         return Response(status=400) # invalid payload request
 
@@ -106,9 +114,12 @@ def results(id=None):
     # app.logger.info(id) # the correlation ID
 
     if id is None: # send back all designs made via the RPC
+        # TODO: get the queue (all entries) from PostgreSQL
+        # queue = ...
         return json.dumps(queue)
 
     if id in queue: # send back specific design made via the RPC
+        # TODO: get the queue (specific entry) from PostgreSQL
         return json.dumps(queue[id])
     
     return Response(status=200) # no data found for given correlation ID, but request was valid
